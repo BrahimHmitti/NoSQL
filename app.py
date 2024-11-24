@@ -1,9 +1,12 @@
 from flask import Flask, render_template, request, jsonify
 from pymongo import MongoClient
 import redis
-import random
+import os
+import google.generativeai as genai
+from dotenv import load_dotenv
 
 app = Flask(__name__)
+load_dotenv()
 
 # Connexion à MongoDB
 mongo_client = MongoClient('mongodb://mongo:27017/')
@@ -13,27 +16,16 @@ citations_collection = db['citations']
 # Connexion à Redis
 redis_client = redis.Redis(host='redis', port=6379, db=0)
 
-# Éléments pour générer les citations
-debuts = [
-    "La clé du {0} est",
-    "Pour atteindre le {0}, il faut",
-    "Le secret du {0} réside dans",
-    "Le chemin vers le {0} commence par",
-]
-
-milieux = [
-    "la persévérance et",
-    "l'imagination combinée à",
-    "la passion mélangée à",
-    "la détermination associée à",
-]
-
-fins = [
-    "l'action constante.",
-    "une vision claire.",
-    "l'apprentissage continu.",
-    "l'adaptabilité face aux défis.",
-]
+# Configuration Gemini
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+model = genai.GenerativeModel("gemini-1.5-flash", 
+    generation_config={
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 40,
+        "max_output_tokens": 1024,
+    }
+)
 
 categories = ["Succès", "Bonheur", "Créativité", "Sagesse"]
 
@@ -46,11 +38,12 @@ def generer_citation():
     nom = request.form['nom']
     categorie = request.form['categorie']
     
-    debut = random.choice(debuts).format(categorie.lower())
-    milieu = random.choice(milieux)
-    fin = random.choice(fins)
+    # Générer citation avec Gemini
+    prompt = f"Génère une citation inspirante sur le thème de '{categorie}' en français. La citation doit être courte (maximum 2 phrases)."
+    chat = model.start_chat(history=[])
+    response = chat.send_message(prompt)
+    citation = response.text
     
-    citation = f"{debut} {milieu} {fin}"
     citation_personnalisee = f"Cher(e) {nom}, {citation}"
     
     # Sauvegarder dans MongoDB
@@ -72,4 +65,3 @@ def statistiques():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
-
