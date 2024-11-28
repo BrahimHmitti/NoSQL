@@ -3,60 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Générateur de Citations Inspirantes</title>
+    <title>Détecteur de Corruption</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-6 text-center">Générateur de Citations Inspirantes</h1>
-        <form id="citation-form" class="mb-8">
+        <h1 class="text-3xl font-bold mb-6 text-center">Analyse de Risque de Corruption</h1>
+        <form id="analyse-form" class="mb-8">
             <div class="mb-4">
-                <label for="nom" class="block mb-2">Votre nom :</label>
-                <input type="text" id="nom" name="nom" required class="w-full px-3 py-2 border rounded">
+                <label for="pays" class="block mb-2">Pays :</label>
+                <input type="text" id="pays" name="pays" required class="w-full px-3 py-2 border rounded">
             </div>
             <div class="mb-4">
-                <label for="categorie" class="block mb-2">Choisissez une catégorie :</label>
-                <select id="categorie" name="categorie" required class="w-full px-3 py-2 border rounded">
-                    {% for categorie in categories %}
-                    <option value="{{ categorie }}">{{ categorie }}</option>
-                    {% endfor %}
-                </select>
+                <label for="ville" class="block mb-2">Ville :</label>
+                <input type="text" id="ville" name="ville" required class="w-full px-3 py-2 border rounded">
             </div>
-            <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Générer une citation</button>
+            <div class="mb-4">
+                <label for="poste" class="block mb-2">Poste actuel :</label>
+                <input type="text" id="poste" name="poste" required class="w-full px-3 py-2 border rounded">
+            </div>
+            <div class="mb-4">
+                <label for="salaire" class="block mb-2">Salaire mensuel brut :</label>
+                <input type="number" id="salaire" name="salaire" required class="w-full px-3 py-2 border rounded">
+            </div>
+            <div class="mb-4">
+                <label for="bien" class="block mb-2">Bien principal (type et valeur) :</label>
+                <input type="text" id="bien" name="bien" required class="w-full px-3 py-2 border rounded">
+            </div>
+            <div class="mb-4">
+                <label for="autres_revenus" class="block mb-2">Autres revenus connus :</label>
+                <input type="text" id="autres_revenus" name="autres_revenus" class="w-full px-3 py-2 border rounded">
+            </div>
+            <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Analyser</button>
         </form>
-        <div id="citation-resultat" class="mb-8 p-4 bg-white rounded shadow hidden">
-            <h2 class="text-xl font-semibold mb-2">Votre citation inspirante :</h2>
-            <p id="citation-texte" class="text-lg italic"></p>
-        </div>
-        <div id="statistiques" class="text-center">
-            <p>Nombre total de citations générées : <span id="total-citations">0</span></p>
+        <div id="resultat" class="mb-8 p-4 bg-white rounded shadow hidden">
+            <h2 class="text-xl font-semibold mb-2">Résultat de l'analyse :</h2>
+            <div class="mb-4">
+                <h3 class="font-semibold">Score de suspicion :</h3>
+                <p id="score" class="text-lg"></p>
+            </div>
+            <div class="mb-4">
+                <h3 class="font-semibold">Analyse détaillée :</h3>
+                <p id="analyse" class="whitespace-pre-line"></p>
+            </div>
+            <div class="mb-4">
+                <h3 class="font-semibold">Contexte :</h3>
+                <p id="contexte"></p>
+            </div>
+            <div>
+                <h3 class="font-semibold">Recommandations :</h3>
+                <p id="recommandations"></p>
+            </div>
         </div>
     </div>
     <script>
-        document.getElementById('citation-form').addEventListener('submit', function(e) {
+        document.getElementById('analyse-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            fetch('/generer_citation', {
+            fetch('/analyser', {
                 method: 'POST',
                 body: new FormData(this)
             })
             .then(response => response.json())
             .then(data => {
-                document.getElementById('citation-texte').textContent = data.citation;
-                document.getElementById('citation-resultat').classList.remove('hidden');
-                updateStats();
+                document.getElementById('score').textContent = data.score;
+                document.getElementById('analyse').textContent = data.analyse;
+                document.getElementById('contexte').textContent = data.contexte;
+                document.getElementById('recommandations').textContent = data.recommandations;
+                document.getElementById('resultat').classList.remove('hidden');
             });
         });
-
-        function updateStats() {
-            fetch('/statistiques')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('total-citations').textContent = data.total_citations;
-            });
-        }
-
-        updateStats();
     </script>
 </body>
 </html>
-
