@@ -1,25 +1,46 @@
-from flask import Flask, render_template, request, jsonify
-from pymongo import MongoClient
-import redis
+from flask import Flask, render_template, request, jsonify 
 import os
 import google.generativeai as genai
-from dotenv import load_dotenv
+from pymongo import MongoClient
+from google.cloud import secretmanager
 
 app = Flask(__name__)
-load_dotenv()
 
-# Connexion à MongoDB
-mongo_client = MongoClient('mongodb://mongo:27017/')
-db = mongo_client['citations_db']
-citations_collection = db['citations']
+def get_secrets():
+    client = secretmanager.SecretManagerServiceClient()
+    project_id = "serverless-corruption"
+    
+    # Get Gemini API Key
+    api_key_name = f"projects/{project_id}/secrets/google-api-key/versions/latest"
+    api_key_response = client.access_secret_version(request={"name": api_key_name})
+    api_key = api_key_response.payload.data.decode("UTF-8")
+    
+    # Get MongoDB URI
+    mongo_uri_name = f"projects/{project_id}/secrets/mongo-uri/versions/latest"
+    mongo_uri_response = client.access_secret_version(request={"name": mongo_uri_name})
+    mongo_uri = mongo_uri_response.payload.data.decode("UTF-8")
+    
+    return api_key, mongo_uri
 
-# Connexion à Redis
-redis_client = redis.Redis(host='redis', port=6379, db=0)
+# Get secrets
+api_key, mongo_uri = get_secrets()
 
+# Cloud configuration
+mongo_client = MongoClient(mongo_uri)
+db = mongo_client['corruption_db']
+analyses = db['analyses']
 
 # Configuration Gemini
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("learnlm-1.5-pro-experimental")
+genai.configure(api_key=api_key)
+generation_config = {
+    "temperature": 1,
+    "timeout": 120,
+}
+
+model = genai.GenerativeModel(
+    model_name="gemini-1.5-pro",
+    generation_config=generation_config
+)
 
 @app.route('/')
 def index():
