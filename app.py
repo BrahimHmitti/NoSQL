@@ -72,13 +72,6 @@ def analyser():
             
         logger.info("Génération terminée.")
 
-        # Traitement de la réponse
-        lignes = texte_reponse.split('\n')
-        score = next((line for line in lignes if "Pourcentage" in line), "Score non disponible")
-        analyse = "\n".join(line for line in lignes if "Facteur" in line)
-        contexte = next((line for line in lignes if "Contexte :" in line), "Contexte non disponible")
-        recommandations = next((line for line in lignes if "Recommandations" in line), "Recommandations non disponibles")
-
         # Enregistrement dans MongoDB
         analyses.insert_one({
             'input': {
@@ -90,19 +83,13 @@ def analyser():
                 'autres_revenus': autres_revenus
             },
             'output': {
-                'score': score,
-                'analyse': analyse,
-                'contexte': contexte,
-                'recommandations': recommandations
+                'texte_reponse': texte_reponse
             }
         })
         logger.info("Analyse enregistrée dans MongoDB.")
 
         return jsonify({
-            'score': score,
-            'analyse': analyse,
-            'contexte': contexte,
-            'recommandations': recommandations
+            'texte_reponse': texte_reponse
         })
 
     except Exception as e:
