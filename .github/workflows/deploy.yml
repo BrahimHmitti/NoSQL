@@ -28,7 +28,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/nosql/corruption-detector:latest
+        tags: ghcr.io/brahimhmitti/nosql/corruption-detector:latest
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v3
