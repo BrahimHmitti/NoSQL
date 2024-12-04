@@ -34,27 +34,23 @@ analyses = None
 model = None
 
 def init_mongodb():
-    """Initialize MongoDB connection with retry logic"""
+    """Initialize MongoDB connection with shorter timeouts"""
     global mongo_client, db, analyses
-    max_retries = 3
-    retry_delay = 1
-
-    for attempt in range(max_retries):
-        try:
-            mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-            # Test connection
-            mongo_client.server_info()
-            db = mongo_client[db_name]
-            analyses = db[collection_name]
-            logger.info("MongoDB connection successful")
-            return True
-        except Exception as e:
-            logger.warning(f"MongoDB connection attempt {attempt + 1} failed: {str(e)}")
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-            else:
-                logger.error("All MongoDB connection attempts failed")
-                return False
+    try:
+        mongo_client = MongoClient(
+            mongo_uri,
+            serverSelectionTimeoutMS=2000,  # Réduit à 2 secondes
+            connectTimeoutMS=2000,
+            socketTimeoutMS=2000
+        )
+        mongo_client.server_info()
+        db = mongo_client[db_name]
+        analyses = db[collection_name]
+        logger.info("MongoDB connection successful")
+        return True
+    except Exception as e:
+        logger.error(f"MongoDB connection failed: {str(e)}")
+        return False
 
 def init_gemini():
     """Initialize Gemini model"""
@@ -128,68 +124,65 @@ def analyser():
     logger.info(f"[{request_id}] Analysis request received")
 
     try:
-        # Validate required fields
+        # Vérifier si Gemini est disponible
+        if not model:
+            return jsonify({
+                'error': 'Service Gemini non disponible'
+            }), 503
+
+        # Validation des champs
         required_fields = ['pays', 'ville', 'poste', 'salaire', 'bien']
         form_data = {field: request.form.get(field) for field in required_fields}
         missing_fields = [f for f in required_fields if not form_data.get(f)]
         
         if missing_fields:
-            logger.warning(f"[{request_id}] Missing required fields: {missing_fields}")
             return jsonify({
-                'error': 'Missing required fields',
-                'missing': missing_fields,
-                'request_id': request_id
+                'error': 'Champs manquants',
+                'missing': missing_fields
             }), 400
 
-        # Include optional fields
-        form_data['autres_revenus'] = request.form.get('autres_revenus', 'aucun')
-        
-        # Generate analysis
-        if not model:
-            raise Exception("Gemini model not available")
-
+        # Génération avec Gemini
         prompt = f"Analyze corruption potential for {form_data['poste']} in {form_data['ville']}, {form_data['pays']} " \
                 f"with salary {form_data['salaire']} and assets {form_data['bien']}"
         
         logger.info(f"[{request_id}] Generating analysis...")
-        response = model.generate_content(prompt)
-        
-        if not response or not response.text:
-            raise ValueError("Empty response from Gemini")
-        
-        analysis_text = response.text
-        logger.info(f"[{request_id}] Analysis generated successfully")
+        try:
+            response = model.generate_content(prompt)
+            if not response or not response.text:
+                raise ValueError("Réponse Gemini vide")
+            analysis_text = response.text
+        except Exception as gemini_error:
+            logger.error(f"[{request_id}] Erreur Gemini: {str(gemini_error)}")
+            return jsonify({
+                'error': 'Erreur de génération',
+                'details': str(gemini_error)
+            }), 500
 
-        # Save to MongoDB if available
+        # Sauvegarde MongoDB (non bloquante)
         if analyses:
             try:
-                result = analyses.insert_one({
+                analyses.insert_one({
                     'request_id': request_id,
                     'timestamp': datetime.utcnow(),
                     'input': form_data,
                     'output': analysis_text
                 })
-                logger.info(f"[{request_id}] Analysis saved to MongoDB")
+                logger.info(f"[{request_id}] Saved to MongoDB")
             except Exception as db_error:
                 logger.error(f"[{request_id}] MongoDB save failed: {str(db_error)}")
-                # Continue with response even if save fails
-        else:
-            logger.warning(f"[{request_id}] MongoDB not available, skipping save")
 
         return jsonify({
             'analysis': analysis_text,
             'request_id': request_id,
-            'timestamp': datetime.utcnow().isoformat()
+            'saved': analyses is not None
         })
 
     except Exception as e:
-        logger.error(f"[{request_id}] Error processing request: {str(e)}")
+        logger.error(f"[{request_id}] Unexpected error: {str(e)}")
         return jsonify({
-            'error': 'Analysis failed',
-            'details': str(e),
-            'request_id': request_id
+            'error': 'Erreur inattendue',
+            'details': str(e)
         }), 500
-
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
