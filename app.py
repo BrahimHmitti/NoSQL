@@ -118,19 +118,20 @@ def health():
     status['healthy'] = all([status['mongodb_connected'], status['gemini_available']])
     return jsonify(status), 200 if status['healthy'] else 503
 
+# Modifier la route /analyser pour séparer complètement MongoDB et Gemini
 @app.route('/analyser', methods=['POST'])
 def analyser():
     request_id = f"req_{int(time.time())}"
     logger.info(f"[{request_id}] Analysis request received")
 
     try:
-        # Vérifier si Gemini est disponible
+        # 1. Vérifier Gemini en premier
         if not model:
             return jsonify({
                 'error': 'Service Gemini non disponible'
             }), 503
 
-        # Validation des champs
+        # 2. Valider les données
         required_fields = ['pays', 'ville', 'poste', 'salaire', 'bien']
         form_data = {field: request.form.get(field) for field in required_fields}
         missing_fields = [f for f in required_fields if not form_data.get(f)]
@@ -141,41 +142,45 @@ def analyser():
                 'missing': missing_fields
             }), 400
 
-        # Génération avec Gemini
+        # 3. Générer l'analyse avec Gemini
         prompt = f"Analyze corruption potential for {form_data['poste']} in {form_data['ville']}, {form_data['pays']} " \
                 f"with salary {form_data['salaire']} and assets {form_data['bien']}"
         
         logger.info(f"[{request_id}] Generating analysis...")
+        
         try:
             response = model.generate_content(prompt)
             if not response or not response.text:
                 raise ValueError("Réponse Gemini vide")
             analysis_text = response.text
+            
+            # 4. Tenter la sauvegarde MongoDB sans bloquer
+            if analyses:
+                try:
+                    analyses.insert_one({
+                        'request_id': request_id,
+                        'timestamp': datetime.utcnow(),
+                        'input': form_data,
+                        'output': analysis_text
+                    })
+                    logger.info(f"[{request_id}] Saved to MongoDB")
+                except Exception as db_error:
+                    logger.warning(f"[{request_id}] MongoDB save failed: {str(db_error)}")
+                    # Continue sans erreur même si MongoDB échoue
+            
+            # 5. Retourner la réponse même si MongoDB a échoué
+            return jsonify({
+                'analysis': analysis_text,
+                'request_id': request_id,
+                'saved': bool(analyses)  # Indique si MongoDB était disponible
+            })
+
         except Exception as gemini_error:
             logger.error(f"[{request_id}] Erreur Gemini: {str(gemini_error)}")
             return jsonify({
                 'error': 'Erreur de génération',
                 'details': str(gemini_error)
             }), 500
-
-        # Sauvegarde MongoDB (non bloquante)
-        if analyses:
-            try:
-                analyses.insert_one({
-                    'request_id': request_id,
-                    'timestamp': datetime.utcnow(),
-                    'input': form_data,
-                    'output': analysis_text
-                })
-                logger.info(f"[{request_id}] Saved to MongoDB")
-            except Exception as db_error:
-                logger.error(f"[{request_id}] MongoDB save failed: {str(db_error)}")
-
-        return jsonify({
-            'analysis': analysis_text,
-            'request_id': request_id,
-            'saved': analyses is not None
-        })
 
     except Exception as e:
         logger.error(f"[{request_id}] Unexpected error: {str(e)}")
