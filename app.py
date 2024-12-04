@@ -118,75 +118,65 @@ def health():
     status['healthy'] = all([status['mongodb_connected'], status['gemini_available']])
     return jsonify(status), 200 if status['healthy'] else 503
 
-# Modifier la route /analyser pour séparer complètement MongoDB et Gemini
 @app.route('/analyser', methods=['POST'])
 def analyser():
     request_id = f"req_{int(time.time())}"
     logger.info(f"[{request_id}] Analysis request received")
 
     try:
-        # 1. Vérifier Gemini en premier
-        if not model:
-            return jsonify({
-                'error': 'Service Gemini non disponible'
-            }), 503
 
-        # 2. Valider les données
-        required_fields = ['pays', 'ville', 'poste', 'salaire', 'bien']
-        form_data = {field: request.form.get(field) for field in required_fields}
-        missing_fields = [f for f in required_fields if not form_data.get(f)]
-        
-        if missing_fields:
-            return jsonify({
-                'error': 'Champs manquants',
-                'missing': missing_fields
-            }), 400
+    # Get form data first
+        data = {
+        'pays': request.form['pays'],
+        'ville': request.form['ville'],
+        'poste': request.form['poste'],
+        'salaire': request.form['salaire'],
+        'bien': request.form['bien'],
+        'autres_revenus': request.form.get('autres_revenus', 'aucun'),
+    }
+    
 
-        # 3. Générer l'analyse avec Gemini
-        prompt = f"Analyze corruption potential for {form_data['poste']} in {form_data['ville']}, {form_data['pays']} " \
-                f"with salary {form_data['salaire']} and assets {form_data['bien']}"
-        
+        prompt = f"""
+Agissez comme un expert en détection de corruption et d'anomalies financières. Analysez les données suivantes et fournissez :
+
+1. Un **pourcentage de risque de corruption** basé sur les informations fournies (X%).
+2. Une **explication concise** en 2-3 phrases, détaillant les éléments spécifiques qui contribuent à ce score de suspicion.
+3. **Contexte supplémentaire** : Prenez en compte les facteurs régionaux comme les salaires moyens, le coût de la vie et les valeurs immobilières pour établir une comparaison avec la situation financière de la personne.
+4. **Ne retournez jamais "N/A"**, chaque analyse doit être complète, même si le risque de corruption est faible. 
+
+**Données à analyser** :
+- **Pays/Ville** : {data['pays']}, {data['ville']}
+- **Poste** : {data['poste']}
+- **Salaire mensuel brut** : {data['salaire']}
+- **Bien principal** (type et valeur estimée) : {data['bien']}
+- **Autres revenus** : {data['autres_revenus']}
+
+### **Contexte spécifique** :
+- Comparez le salaire et la valeur du bien avec les moyennes de {data['ville']}, {data['pays']}, en tenant compte des écarts potentiels.
+- Analysez le rôle de {data['poste']} pour déterminer s'il donne un accès privilégié à des ressources financières ou s'il peut faciliter des comportements corrompus.
+- Prenez en compte la situation économique locale, comme le coût de la vie et la capacité d'acquisition d'un bien dans cette région.
+
+**Format de sortie** :
+1. **Pourcentage de suspicion de corruption** : X%
+2. **Analyse concise** : 
+   - Facteur 1 : {{Explication de la différence entre le salaire et le bien, ou d'autres éléments révélateurs de risque.}}
+   - Facteur 2 : {{Explication du rôle professionnel et de l'accès aux ressources financières.}}
+3. **Contexte local** : {{Brève analyse des normes locales concernant le salaire, le coût de la vie et l'accessibilité des biens immobiliers.}}
+4. **Recommandations** : {{S'il y a lieu, suggérer des étapes supplémentaires pour une enquête plus approfondie.}}
+
+Assurez-vous de ne pas retourner "N/A" et fournissez une analyse complète même pour des résultats faibles ou modérés de suspicion et ne mit pas du texte en gras.
+"""
         logger.info(f"[{request_id}] Generating analysis...")
+        response = model.generate_content(prompt)
         
-        try:
-            response = model.generate_content(prompt)
-            if not response or not response.text:
-                raise ValueError("Réponse Gemini vide")
-            analysis_text = response.text
-            
-            # 4. Tenter la sauvegarde MongoDB sans bloquer
-            if analyses:
-                try:
-                    analyses.insert_one({
-                        'request_id': request_id,
-                        'timestamp': datetime.utcnow(),
-                        'input': form_data,
-                        'output': analysis_text
-                    })
-                    logger.info(f"[{request_id}] Saved to MongoDB")
-                except Exception as db_error:
-                    logger.warning(f"[{request_id}] MongoDB save failed: {str(db_error)}")
-                    # Continue sans erreur même si MongoDB échoue
-            
-            # 5. Retourner la réponse même si MongoDB a échoué
-            return jsonify({
-                'analysis': analysis_text,
-                'request_id': request_id,
-                'saved': bool(analyses)  # Indique si MongoDB était disponible
-            })
-
-        except Exception as gemini_error:
-            logger.error(f"[{request_id}] Erreur Gemini: {str(gemini_error)}")
-            return jsonify({
-                'error': 'Erreur de génération',
-                'details': str(gemini_error)
-            }), 500
+        return jsonify({
+            'analysis': response.text
+        })
 
     except Exception as e:
-        logger.error(f"[{request_id}] Unexpected error: {str(e)}")
+        logger.error(f"[{request_id}] Error: {str(e)}")
         return jsonify({
-            'error': 'Erreur inattendue',
-            'details': str(e)
+            'error': str(e)
         }), 500
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))

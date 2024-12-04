@@ -55,67 +55,51 @@
                 <p>Analyse en cours...</p>
             </div>
             <!-- Contenu des résultats -->
-            <div id="content">
-                <h2 class="text-xl font-semibold mb-2">Résultat de l'analyse :</h2>
-                <div class="mb-4">
-                    <h3 class="font-semibold">Score de suspicion :</h3>
-                    <p id="score" class="text-lg"></p>
-                </div>
-                <div class="mb-4">
-                    <h3 class="font-semibold">Analyse détaillée :</h3>
-                    <p id="analyse" class="whitespace-pre-line"></p>
-                </div>
-                <div class="mb-4">
-                    <h3 class="font-semibold">Contexte :</h3>
-                    <p id="contexte"></p>
-                </div>
-                <div>
-                    <h3 class="font-semibold">Recommandations :</h3>
-                    <p id="recommandations"></p>
-                </div>
+        <!-- Replace the entire content div with this simpler version -->
+        <div id="content">
+            <h2 class="text-xl font-semibold mb-2">Résultat de l'analyse :</h2>
+            <div class="mb-4 p-4 bg-white rounded shadow">
+                <p id="analyse-text" class="whitespace-pre-line"></p>
             </div>
         </div>
-    </div>
+     
     
     <!-- Script JavaScript -->
     <script>
-        document.getElementById('analyse-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            // Afficher le loader et masquer le contenu
-            document.getElementById('loader').classList.remove('hidden');
-            document.getElementById('content').classList.add('hidden');
-            document.getElementById('resultat').classList.remove('hidden');
-            
-            try {
-                const formData = new FormData(this);
-                const response = await fetch('/analyser', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Erreur HTTP ! statut : ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                // Mettre à jour l'interface avec les résultats
-                document.getElementById('score').textContent = data.score;
-                document.getElementById('analyse').textContent = data.analyse;
-                document.getElementById('contexte').textContent = data.contexte;
-                document.getElementById('recommandations').textContent = data.recommandations;
-                
-                // Afficher le contenu et masquer le loader
-                document.getElementById('loader').classList.add('hidden');
-                document.getElementById('content').classList.remove('hidden');
-            } catch (error) {
-                console.error('Erreur :', error);
-                alert('Une erreur est survenue lors de l\'analyse. Veuillez réessayer.');
-                // Masquer le loader en cas d'erreur
-                document.getElementById('loader').classList.add('hidden');
-            }
+            document.getElementById('analyse-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // Show loader
+    document.getElementById('loader').classList.remove('hidden');
+    document.getElementById('content').classList.add('hidden');
+    document.getElementById('resultat').classList.remove('hidden');
+    
+    try {
+        const formData = new FormData(this);
+        const response = await fetch('/analyser', {
+            method: 'POST',
+            body: formData
         });
+
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP ! statut : ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Display only Gemini's analysis
+        document.getElementById('analyse-text').textContent = data.analysis;
+        
+        // Show content, hide loader
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('content').classList.remove('hidden');
+    } catch (error) {
+        console.error('Erreur :', error);
+        alert('Une erreur est survenue lors de l\'analyse. Veuillez réessayer.');
+        document.getElementById('loader').classList.add('hidden');
+    }
+});
+
     </script>
 </body>
 </html>
